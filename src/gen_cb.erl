@@ -9,6 +9,10 @@
     call/5]).
 
 -export([
+    reply_cb/1,
+    receive_cb/1]).
+
+-export([
     behaviour_info/1]).
 
 -export([
@@ -90,10 +94,31 @@ unregister_name(Pid) when is_pid(Pid) ->
 
 
 %%% -----------------------------------------------------------------
+%%% Default callbacks
+%%% -----------------------------------------------------------------
+reply_cb(CBEvent) ->
+    ReplyTo = CBEvent#cb_event.reply_to,
+    ReplyMsg = {'$gen_cb_reply', CBEvent#cb_event.cb_arg, 
+                CBEvent#cb_event.msg_ref, CBEvent#cb_event.sent_from},
+    erlang:send(ReplyTo, ReplyMsg),
+    ok.
+
+receive_cb(CBEvent) ->
+    MsgRef = CBEvent#cb_event.msg_ref,
+    Timeout = CBEvent#cb_event.timeout,
+    receive
+        {'$gen_cb_reply', Reply, MsgRef, _SentFrom} ->
+            Reply
+    after Timeout ->
+        error(timeout)
+    end.
+
+
+%%% -----------------------------------------------------------------
 %%% The calling interface
 %%% -----------------------------------------------------------------
 call(Dest, Request, LocalCB, RemoteCB) ->
-    call(Dest, Request, LocalCB, RemoteCB, infinity).
+    call(Dest, Request, LocalCB, RemoteCB, 5000).
 
 call(Dest, Request, LocalCB, RemoteCB, Timeout) ->
     {Msg, Ref} = to_cb_msg(Request, RemoteCB),
