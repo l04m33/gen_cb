@@ -27,8 +27,8 @@ behaviour_info(callbacks) ->
     [
         {init,          1},
         {handle_call,   3},
-        {handle_info,   2}
-        %{terminate,     2},
+        {handle_info,   2},
+        {terminate,     2}
         %{code_change,   3}
     ].
 
@@ -180,57 +180,60 @@ loop(Parent, State, Mod, Timeout) ->
     case Msg of
         {'$gen_cb', From, MsgRef, Request, CB} ->
             Replier = fun(Rep) ->
-                call_remote_cb(CB, From, Rep, MsgRef)
+                call_remote_cb(CB, From, Rep, MsgRef, Request, Mod, State)
             end,
 
             Res = try
                 Mod:handle_call(Request, Replier, State)
             catch ErrType : ErrName ->
                 Error = {{ErrType, ErrName}, erlang:get_stacktrace()},
-                exit(Error)
+                call_terminate(Error, Request, Mod, State)
             end,
 
             case Res of
                 {reply, Reply, NState} ->
-                    call_remote_cb(CB, From, Reply, MsgRef),
+                    call_remote_cb(CB, From, Reply, MsgRef, Request, Mod, NState),
                     loop(Parent, NState, Mod, infinity);
                 {reply, Reply, NState, NTimeout} ->
-                    call_remote_cb(CB, From, Reply, MsgRef),
+                    call_remote_cb(CB, From, Reply, MsgRef, Request, Mod, NState),
                     loop(Parent, NState, Mod, NTimeout);
-                {stop, Reason, Reply, _NState} ->
-                    call_remote_cb(CB, From, Reply, MsgRef),
-                    exit(Reason);
+                {stop, Reason, Reply, NState} ->
+                    call_remote_cb(CB, From, Reply, MsgRef, Request, Mod, NState),
+                    call_terminate(Reason, Request, Mod, NState);
                 Other ->
-                    handle_common_reply(Other, Parent, Mod, State)
+                    handle_common_reply(Other, Request, Parent, Mod, State)
             end;
+
+        {'EXIT', Parent, Reason} = ExitMsg ->
+            call_terminate(Reason, ExitMsg, Mod, State);
 
         OtherRequest ->
             Res = try
                 Mod:handle_info(OtherRequest, State)
             catch ErrType : ErrName ->
                 Error = {{ErrType, ErrName}, erlang:get_stacktrace()},
-                exit(Error)
+                call_terminate(Error, OtherRequest, Mod, State)
             end,
 
-            handle_common_reply(Res, Parent, Mod, State)
+            handle_common_reply(Res, OtherRequest, Parent, Mod, State)
     end.
 
 
-handle_common_reply(Res, Parent, Mod, _State) ->
+handle_common_reply(Res, Msg, Parent, Mod, State) ->
     case Res of
         {noreply, NState} ->
             loop(Parent, NState, Mod, infinity);
         {noreply, NState, NTimeout} ->
             loop(Parent, NState, Mod, NTimeout);
-        {stop, Reason, _NState} ->
-            exit(Reason);
+        {stop, Reason, NState} ->
+            call_terminate(Reason, Msg, Mod, NState);
         Other ->
             ResError = {bad_return_value, Other},
-            exit(ResError)
+            call_terminate(ResError, Msg, Mod, State)
     end.
 
 
-call_remote_cb(CB, From, Reply, MsgRef) ->
+call_remote_cb(CB, From, Reply, MsgRef, Msg, Mod, State) ->
     CBEvent = #cb_event{
         reply_to  = From,
         cb_arg    = Reply,
@@ -240,13 +243,46 @@ call_remote_cb(CB, From, Reply, MsgRef) ->
 
     case CB of
         {F, Context} when is_function(F, 1) -> 
-            F(CBEvent#cb_event{context = Context});
+            try
+                F(CBEvent#cb_event{context = Context})
+            catch ErrType : ErrName ->
+                Error = {{ErrType, ErrName}, erlang:get_stacktrace()},
+                call_terminate(Error, Msg, Mod, State)
+            end;
         F when is_function(F, 1) ->
-            F(CBEvent);
+            try
+                F(CBEvent)
+            catch ErrType : ErrName ->
+                Error = {{ErrType, ErrName}, erlang:get_stacktrace()},
+                call_terminate(Error, Msg, Mod, State)
+            end;
         none ->
             skip;
-        _ ->
-            error(invalid_callback)
+        Other ->
+            call_terminate({invalid_callback, Other}, Msg, Mod, State)
     end,
     ok.
+
+
+%%% -----------------------------------------------------------------
+%%% Termination
+%%% -----------------------------------------------------------------
+call_terminate(Reason, _Msg, Mod, State) ->
+    _Res = try
+        Mod:terminate(Reason, State)
+    catch ErrType : ErrName ->
+        Error = {{ErrType, ErrName}, erlang:get_stacktrace()},
+        exit(Error)
+    end,
+
+    case Reason of
+        normal ->
+            exit(normal);
+        shutdown ->
+            exit(shutdown);
+        {shutdown, _} = Shutdown ->
+            exit(Shutdown);
+        _ ->
+            exit(Reason)
+    end.
 
