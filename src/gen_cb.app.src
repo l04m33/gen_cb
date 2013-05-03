@@ -1,12 +1,8 @@
 {application, gen_cb,
  [
-  {description, ""},
-  {vsn, "1"},
+  {description, "A generic callback server."},
+  {vsn, "1.0"},
   {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib
-                 ]},
-  {mod, { gen_cb_app, []}},
+  {applications, [kernel, stdlib]},
   {env, []}
  ]}.
