@@ -8,5 +8,19 @@ whether to call the server synchronously or asynchonously, in runtime.
 Usage
 =====
 
-See `src/tester.erl` for basic usage.
+See `src/tester.erl` for basic usage. It should be simple enough once you 
+know `gen_server` :).
+
+Limitations
+===========
+
+Passing around functions between nodes are somewhat dangerous, unless one 
+can assure that the same code for the functions exists on all nodes, in the
+same version. Thus using `gen_cb` in a distributed environment is discouraged.
+
+TODO
+====
+
+1. Add tests.
+2. Handle code change & hibernation.
 
