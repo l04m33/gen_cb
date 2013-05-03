@@ -51,6 +51,8 @@ start_link(Name, Mod, Args, Options) ->
 init_it(Starter, self, Name, Mod, Args, Options) ->
     init_it(Starter, self(), Name, Mod, Args, Options);
 init_it(Starter, Parent, Name, Mod, Args, _Options) ->
+    erlang:put('$initial_call', {Mod, init, 1}),
+
     Res = try 
         Mod:init(Args)
     catch ErrType : ErrName ->
