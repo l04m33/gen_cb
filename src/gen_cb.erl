@@ -267,11 +267,16 @@ call_remote_cb(CB, From, Reply, MsgRef, Msg, Mod, State) ->
 %%% -----------------------------------------------------------------
 %%% Termination
 %%% -----------------------------------------------------------------
-call_terminate(Reason, _Msg, Mod, State) ->
+call_terminate(Reason, Msg, Mod, State) ->
     _Res = try
         Mod:terminate(Reason, State)
     catch ErrType : ErrName ->
         Error = {{ErrType, ErrName}, erlang:get_stacktrace()},
+        error_logger:format("** Generic callback server ~p terminating ~n"
+                            "** Last message in was ~p~n"
+                            "** When Server state == ~p~n"
+                            "** Reason for termination == ~n** ~p~n",
+                            [self(), Msg, State, Error]),
         exit(Error)
     end,
 
@@ -283,6 +288,11 @@ call_terminate(Reason, _Msg, Mod, State) ->
         {shutdown, _} = Shutdown ->
             exit(Shutdown);
         _ ->
+            error_logger:format("** Generic callback server ~p terminating ~n"
+                                "** Last message in was ~p~n"
+                                "** When Server state == ~p~n"
+                                "** Reason for termination == ~n** ~p~n",
+                                [self(), Msg, State, Reason]),
             exit(Reason)
     end.
 
