@@ -32,7 +32,13 @@
     behaviour_info/1]).
 
 -export([
-    init_it/6]).
+    system_continue/3,
+    system_terminate/4,
+    system_code_change/4]).
+
+-export([
+    init_it/6,
+    loop/4]).
 
 -include("gen_cb.hrl").
 
@@ -44,8 +50,8 @@ behaviour_info(callbacks) ->
         {init,          1},
         {handle_call,   3},
         {handle_info,   2},
-        {terminate,     2}
-        %{code_change,   3}
+        {terminate,     2},
+        {code_change,   3}
     ].
 
 %%% -----------------------------------------------------------------
@@ -187,6 +193,9 @@ send_msg(Dest, Msg) when is_pid(Dest) ->
 %%% -----------------------------------------------------------------
 %%% The main loop
 %%% -----------------------------------------------------------------
+loop(Parent, State, Mod, hibernate) ->
+    proc_lib:hibernate(?MODULE, loop, [Parent, State, Mod, infinity]);
+
 loop(Parent, State, Mod, Timeout) ->
     Msg = receive
         Input ->
@@ -221,6 +230,9 @@ loop(Parent, State, Mod, Timeout) ->
                 Other ->
                     handle_common_reply(Other, Request, Parent, Mod, State)
             end;
+
+        {system, From, SysReq} ->
+            sys:handle_system_msg(SysReq, From, Parent, ?MODULE, [], [State, Mod, Timeout]);
 
         {'EXIT', Parent, Reason} = ExitMsg ->
             call_terminate(Reason, ExitMsg, Mod, State);
@@ -312,5 +324,23 @@ call_terminate(Reason, Msg, Mod, State) ->
                                 "** Reason for termination == ~n** ~p~n",
                                 [self(), Msg, State, Reason]),
             exit(Reason)
+    end.
+
+
+%%% -----------------------------------------------------------------
+%%% System callbacks
+%%% -----------------------------------------------------------------
+system_continue(Parent, _DebugOpt, [State, Mod, Timeout]) ->
+    loop(Parent, State, Mod, Timeout).
+
+system_terminate(Reason, _Parent, _DebugOpt, [State, Mod, _Timeout]) ->
+    call_terminate(Reason, [], Mod, State).
+
+system_code_change([State, Mod, Timeout], _Module, OldVsn, Extra) ->
+    case catch Mod:code_change(OldVsn, State, Extra) of
+        {ok, NewState} -> 
+            {ok, [NewState, Mod, Timeout]};
+        Else -> 
+            Else
     end.
 

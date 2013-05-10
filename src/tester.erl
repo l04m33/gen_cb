@@ -8,12 +8,14 @@
     start_link/0,
     do_sync_call/1,
     send_async_msg/1,
-    get_fixed_reply/1]).
+    get_fixed_reply/1,
+    hibernate/0]).
 
 -export([
     init/1,
     handle_call/3,
     handle_info/2,
+    code_change/3,
     terminate/2]).
 
 %%% -----------------------------------------------------------------
@@ -35,6 +37,9 @@ send_async_msg(Msg) ->
 get_fixed_reply(Msg) ->
     gen_cb:call(?MODULE, Msg, fun gen_cb:receive_cb/1, fun fix_reply/1).
 
+hibernate() ->
+    gen_cb:call(?MODULE, hibernate, none, none).
+
 
 %%% -----------------------------------------------------------------
 %%% Callbacks
@@ -51,6 +56,10 @@ handle_call({use_replier, Rep}, Replier, State) ->
     erlang:spawn(fun() -> Replier(Rep) end),
     {noreply, State};
 
+handle_call(hibernate, Replier, State) ->
+    io:format("hibernate, Replier = ~w, State = ~w~n", [Replier, State]),
+    {noreply, State, hibernate};
+
 handle_call(Msg, Replier, State) ->
     io:format("handle_call, Msg = ~w, Replier = ~w, State = ~w~n",
               [Msg, Replier, State]),
@@ -61,6 +70,12 @@ handle_info(Msg, State) ->
     io:format("handle_info, Msg = ~w, State = ~w~n",
               [Msg, State]),
     {noreply, State}.
+
+
+code_change(OldVsn, State, Extra) ->
+    io:format("code_change, OldVsn = ~w, State = ~w, Extra = ~w~n",
+              [OldVsn, State, Extra]),
+    {ok, State}.
 
 
 terminate(Reason, State) ->
