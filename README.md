@@ -22,5 +22,5 @@ TODO
 ====
 
 1. Add tests.
-2. Handle code change & hibernation.
+2. <s>Handle code change & hibernation.</s> Done.
 
