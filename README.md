@@ -21,6 +21,6 @@ same version. Thus using `gen_cb` in a distributed environment is discouraged.
 TODO
 ====
 
-1. Add tests.
-2. <s>Handle code change & hibernation.</s> Done.
+- [ ] Add tests.
+- [x] Handle code change & hibernation.
 
