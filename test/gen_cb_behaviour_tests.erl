@@ -57,6 +57,7 @@ test_termination() ->
 
     %% exceptional termination
     {ok, PID2} = gen_cb:start(?MODULE, [], []),
+    ErrorLoggers = remove_error_loggers(),
     ok = gen_cb:call(PID2, {crash_stop, self()}, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
     receive
         {PID2, {crash_stopped, {{exit, crash_stopped}, _Stacktrace}}} ->
@@ -64,6 +65,7 @@ test_termination() ->
         after 500 ->
             exit(termination_timed_out)
     end,
+    restore_error_logger(ErrorLoggers),
     wait_for_exit(PID2, 500),
     ok.
 
@@ -159,4 +161,13 @@ wait_for_exit(PID, N) ->
         _ ->
             ok
     end.
+
+remove_error_loggers() ->
+    L = gen_event:which_handlers(error_logger),
+    [error_logger:delete_report_handler(H) || H <- L],
+    L.
+
+restore_error_logger(L) ->
+    [error_logger:add_report_handler(H) || H <- L],
+    ok.
 
