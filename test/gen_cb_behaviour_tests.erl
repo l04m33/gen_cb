@@ -13,7 +13,9 @@
 behaviour_test_() ->
     [
         {"Starting",        fun test_starting/0},
-        {"Termination",     fun test_termination/0}
+        {"Termination",     fun test_termination/0},
+        {"Async Call",      fun test_async_call/0},
+        {"Sync Call",       fun test_sync_call/0}
     ].
 
 test_starting() ->
@@ -53,11 +55,11 @@ test_termination() ->
     end,
     wait_for_exit(PID, 500),
 
-    %% exception termination
+    %% exceptional termination
     {ok, PID2} = gen_cb:start(?MODULE, [], []),
     ok = gen_cb:call(PID2, {crash_stop, self()}, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
     receive
-        {PID2, {crash_stopped, {{error, function_clause}, _Stacktrace}}} ->
+        {PID2, {crash_stopped, {{exit, crash_stopped}, _Stacktrace}}} ->
             ok
         after 500 ->
             exit(termination_timed_out)
@@ -65,6 +67,42 @@ test_termination() ->
     wait_for_exit(PID2, 500),
     ok.
 
+test_async_call() ->
+    {ok, PID} = gen_cb:start(?MODULE, [], []),
+
+    %% normal async call
+    ok = gen_cb:call(PID, {echo, self(), dummy_msg}, none, none),
+    receive
+        {echo, PID, dummy_msg} ->
+            void
+        after 500 ->
+            exit(async_call_timed_out)
+    end,
+
+    ok = gen_cb:call(PID, stop, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
+    wait_for_exit(PID, 500),
+    ok.
+
+test_sync_call() ->
+    {ok, PID} = gen_cb:start(?MODULE, [], []),
+
+    %% normal sync call
+    dummy_msg = gen_cb:call(PID, {echo, self(), dummy_msg}, 
+                            fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
+    receive
+        {echo, PID, dummy_msg} ->
+            void
+        after 500 ->
+            exit(sync_call_timed_out)
+    end,
+
+    %% Replying using Replier
+    from_replier = gen_cb:call(PID, {use_replier, 500}, 
+                               fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
+
+    ok = gen_cb:call(PID, stop, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
+    wait_for_exit(PID, 500),
+    ok.
 
 %%% -----------------------------------------------------------------
 %%% gen_cb behaviour callbacks
@@ -76,7 +114,10 @@ init([]) ->
 handle_call(check_alive, _Replier, State) ->
     {reply, ok, State};
 handle_call({use_replier, Delay}, Replier, _State) ->
-    {noreply, {Replier, ok}, Delay};
+    {noreply, {Replier, from_replier}, Delay};
+handle_call({echo, From, Msg}, _Replier, State) ->
+    From ! {echo, self(), Msg},
+    {reply, Msg, State};
 handle_call(stop, _Replier, State) ->
     {stop, normal, ok, State};
 handle_call({stop, Stopper}, _Replier, _State) ->
@@ -86,7 +127,7 @@ handle_call({crash_stop, Stopper}, _Replier, _State) ->
 
 
 handle_info(timeout, {crash_stopped, Stopper}) when is_pid(Stopper) ->
-    _ = lists:sort(0),
+    exit(crash_stopped),
     {noreply, []};
 handle_info(timeout, {Replier, Reply}) when is_function(Replier) ->
     Replier(Reply),
