@@ -47,8 +47,8 @@ test_termination() ->
     receive
         {PID, {stopped, normal}} ->
             ok
-    after 500 ->
-        exit(termination_timed_out)
+        after 500 ->
+            exit(termination_timed_out)
     end,
     wait_for_exit(PID, 500),
     ok.
