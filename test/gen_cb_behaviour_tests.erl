@@ -17,12 +17,28 @@ behaviour_test_() ->
     ].
 
 test_starting() ->
+    %% gen_cb:start(...)
     {ok, PID} = gen_cb:start(?MODULE, [], []),
     ?assert(erlang:is_process_alive(PID) =:= true),
     {links, Links} = erlang:process_info(self(), links),
     ?assert(lists:member(PID, Links) =:= false),
     ok = gen_cb:call(PID, stop, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
     wait_for_exit(PID, 500),
+
+    %% gen_cb:start_link(...)
+    OldTEFlag = erlang:process_flag(trap_exit, true),
+    {ok, PID2} = gen_cb:start_link(?MODULE, [], []),
+    ?assert(erlang:is_process_alive(PID2) =:= true),
+    {links, Links2} = erlang:process_info(self(), links),
+    ?assert(lists:member(PID2, Links2) =:= true),
+    ok = gen_cb:call(PID2, stop, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
+    receive
+        {'EXIT', PID2, normal} ->
+            void
+        after 500 ->
+            exit(termination_timed_out)
+    end,
+    erlang:process_flag(trap_exit, OldTEFlag),
     ok.
 
 test_termination() ->
