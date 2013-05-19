@@ -42,6 +42,7 @@ test_starting() ->
     ok.
 
 test_termination() ->
+    %% normal termination
     {ok, PID} = gen_cb:start(?MODULE, [], []),
     ok = gen_cb:call(PID, {stop, self()}, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
     receive
@@ -51,6 +52,17 @@ test_termination() ->
             exit(termination_timed_out)
     end,
     wait_for_exit(PID, 500),
+
+    %% exception termination
+    {ok, PID2} = gen_cb:start(?MODULE, [], []),
+    ok = gen_cb:call(PID2, {crash_stop, self()}, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
+    receive
+        {PID2, {crash_stopped, {{error, function_clause}, _Stacktrace}}} ->
+            ok
+        after 500 ->
+            exit(termination_timed_out)
+    end,
+    wait_for_exit(PID2, 500),
     ok.
 
 
@@ -68,9 +80,14 @@ handle_call({use_replier, Delay}, Replier, _State) ->
 handle_call(stop, _Replier, State) ->
     {stop, normal, ok, State};
 handle_call({stop, Stopper}, _Replier, _State) ->
-    {stop, normal, ok, {stopped, Stopper}}.
+    {stop, normal, ok, {stopped, Stopper}};
+handle_call({crash_stop, Stopper}, _Replier, _State) ->
+    {reply, ok, {crash_stopped, Stopper}, 0}.
 
 
+handle_info(timeout, {crash_stopped, Stopper}) when is_pid(Stopper) ->
+    _ = lists:sort(0),
+    {noreply, []};
 handle_info(timeout, {Replier, Reply}) when is_function(Replier) ->
     Replier(Reply),
     {noreply, []};
@@ -81,6 +98,9 @@ code_change(_OldVsn, State, _Extra) ->
     %% TODO
     {ok, State}.
 
+terminate(Reason, {crash_stopped, Stopper}) when is_pid(Stopper) ->
+    Stopper ! {self(), {crash_stopped, Reason}},
+    ok;
 terminate(Reason, {stopped, Stopper}) when is_pid(Stopper) ->
     Stopper ! {self(), {stopped, Reason}},
     ok;
