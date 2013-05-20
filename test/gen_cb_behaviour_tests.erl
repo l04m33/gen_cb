@@ -44,7 +44,7 @@ test_starting() ->
     ok.
 
 test_termination() ->
-    %% normal termination
+    %% Normal termination
     {ok, PID} = gen_cb:start(?MODULE, [], []),
     ok = gen_cb:call(PID, {stop, self()}, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
     receive
@@ -55,7 +55,7 @@ test_termination() ->
     end,
     wait_for_exit(PID, 500),
 
-    %% exceptional termination
+    %% Exceptional termination
     {ok, PID2} = gen_cb:start(?MODULE, [], []),
     ErrorLoggers = remove_error_loggers(),
     ok = gen_cb:call(PID2, {crash_stop, self()}, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
@@ -72,7 +72,7 @@ test_termination() ->
 test_async_call() ->
     {ok, PID} = gen_cb:start(?MODULE, [], []),
 
-    %% normal async call
+    %% Normal async call
     ok = gen_cb:call(PID, {echo, self(), dummy_msg}, none, none),
     receive
         {echo, PID, dummy_msg} ->
@@ -83,12 +83,15 @@ test_async_call() ->
 
     ok = gen_cb:call(PID, stop, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
     wait_for_exit(PID, 500),
+
+    %% Calling a dead process, nothing should happen
+    ok = gen_cb:call(PID, {echo, self(), dummy_msg}, none, none),
     ok.
 
 test_sync_call() ->
     {ok, PID} = gen_cb:start(?MODULE, [], []),
 
-    %% normal sync call
+    %% Normal sync call
     dummy_msg = gen_cb:call(PID, {echo, self(), dummy_msg}, 
                             fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
     receive
@@ -102,8 +105,16 @@ test_sync_call() ->
     from_replier = gen_cb:call(PID, {use_replier, 500}, 
                                fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
 
+    %% Timed out request
+    ?assertError(timeout, gen_cb:call(PID, no_reply, 
+                                      fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1, 500)),
+
     ok = gen_cb:call(PID, stop, fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1),
     wait_for_exit(PID, 500),
+
+    %% Calling a dead process
+    ?assertError(timeout, gen_cb:call(PID, check_alive, 
+                                      fun gen_cb:receive_cb/1, fun gen_cb:reply_cb/1, 500)),
     ok.
 
 %%% -----------------------------------------------------------------
@@ -120,6 +131,8 @@ handle_call({use_replier, Delay}, Replier, _State) ->
 handle_call({echo, From, Msg}, _Replier, State) ->
     From ! {echo, self(), Msg},
     {reply, Msg, State};
+handle_call(no_reply, _Replier, State) ->
+    {noreply, State};
 handle_call(stop, _Replier, State) ->
     {stop, normal, ok, State};
 handle_call({stop, Stopper}, _Replier, _State) ->
