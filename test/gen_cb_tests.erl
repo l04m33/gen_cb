@@ -1,4 +1,4 @@
--module(gen_cb_behaviour_tests).
+-module(gen_cb_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
